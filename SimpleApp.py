@@ -58,18 +58,15 @@ rddTweets = rddPaths.flatMap(parse_json)
 #print "Palabras más usadas", diezPalabrasMasUsadas
 
 
-#def quitaNoAlfaOHash(s):
-    #return re.sub(r'([^\s\w#áéíóúñ]|_)+', '', s.lower())
+def quitaNoAlfaOHash(s):
+    return re.sub(r'([^\s\w#áéíóúñ]|_)+', '', s.lower())
 
-#def sacaHashtags(tweet):
-    #hashtags=tweet.split('#')[1:]
-    #return map(lambda x: x if ' ' not in x else x.partition(' ')[0], hashtags)
+def sacaHashtags(tweet):
+    hashtags=tweet.split('#')[1:]
+    return map(lambda x: x if ' ' not in x else x.partition(' ')[0], hashtags)
 
-#rddHashtags=rddTweets.flatMap(lambda x: quitaNoAlfaOHash(x[2]).split(' ')).filter(lambda x: (len(x)>1) and x[0]=='#')
-
-
-
-#rddAlcanceHashtags=rddHashtags.map(lambda x: (x[1:],1)).reduceByKey(lambda c1,c2: c1+c2)
+rddHashtags=rddTweets.flatMap(lambda x: quitaNoAlfaOHash(x[2]).split(' ')).filter(lambda x: (len(x)>1) and x[0]=='#')
+rddAlcanceHashtags=rddHashtags.map(lambda x: (x[1:],1)).reduceByKey(lambda c1,c2: c1+c2)
 #print "Hashtag mas usado: ",rddAlcanceHashtags.takeOrdered(3, lambda x: -x[1])
 
 #rddLower = rddTweets.map(lambda (usuario,fecha,tweet): (usuario,fecha,tweet.lower())).filter(lambda (usuario,fecha,tweet): '#ff' in tweet)
@@ -92,5 +89,23 @@ rddTweets = rddPaths.flatMap(parse_json)
 
 #print "Usuarios con mayor cantidad de hasthags inutiles: ",rddAlcanceUsuarios.takeOrdered(3, lambda x: -x[1])
 
+import time
+import datetime
+def fechaATimestamp(f):
+    return time.mktime(datetime.datetime.strptime(f, "%a %b %d %H:%M:%S +0000 %Y").timetuple())
 
+def creaTuplasConHashtags((usuario,fecha,tweet)):
+    res=[]
+    palabras=quitaNoAlfaOHash(tweet).split()
+    for p in palabras:
+        if len(p)>1 and p[0]=='#':
+            res.append((p[1:],(fechaATimestamp(fecha),usuario)))
+    return res
 
+rddHashtagsConUsuarioYFecha=rddTweets.flatMap(creaTuplasConHashtags)
+
+#rddHashtagsConUsuarioYFecha=rddTweets.flatMap(lambda (u,f,t): map(lambda y: (y,fechaATimestamp(f),u),quitaNoAlfaOHash(t).split(' '))).filter(lambda x: (len(x[0])>1) and x[0][0]=='#')
+rddPrimerasMenciones=rddHashtagsConUsuarioYFecha.reduceByKey(lambda x,y: x if x[0] < y[0] else y)
+rddPuntuacionesUsuarios=rddPrimerasMenciones.join(rddAlcanceHashtags)
+rddPuntuacionesUsuarios=rddPuntuacionesUsuarios.map(lambda (h,((f,u),p)): (u,(p, [h]))).reduceByKey(lambda p,t: (p[0]+t[0], p[1]+t[1]))
+print rddPuntuacionesUsuarios.takeOrdered(3, lambda x: -x[1][0])
